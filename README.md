@@ -34,6 +34,7 @@ The Principal Component Analysis(PC) was conducted on both county and sub-county
 
 ### Classification
 This section uses decision tree, Random Forest, Logistic Regression, etc. In Decision Tree, we pruned tree to minimize the misclassification error and use folds defined in the handout for cross-validation. In Random Forest, we decorrelate the trees, and plot confusion matrix as well as the accuracy and Gini for each census variable to see which one has higher impact on voting decision. In Logistic Regression, we interpret some coefficients in terms of a unit change in the variables. In result, we found the significant variables are proverty, childPoverty, transit, selfEmployed, etc., and the best model we decided is random forest in our scenario. Please see detailed analysis in the report.
+
 <img width="417" alt="Screenshot 2023-05-26 at 15 14 48" src="https://github.com/MeiyuLiT/Analysis-of-2016-United-States-Presidential-Election/assets/75913591/4253793e-0198-4425-adce-34ad92806223">
 
 
