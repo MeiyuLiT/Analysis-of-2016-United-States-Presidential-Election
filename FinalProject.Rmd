@@ -1,0 +1,640 @@
+---
+title: "231_finproject"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tree)
+library(dplyr)
+library(class)
+library(rpart)
+library(maptree)
+library(ROCR)
+library(moments)
+library(kableExtra)
+library(MASS)
+library(knitr)
+library(kableExtra)
+library(leaflet)
+library(dendextend)
+
+library(glmnet)
+library(gbm)
+library(randomForest)
+library(e1071)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+setwd(getwd())
+## put the data folder and this handout file together.
+## read data and convert candidate from string to factor
+election.raw <- read_delim("data/election/election.csv", delim = ",") %>% mutate(candidate=as.factor(candidate))
+
+census_meta <- read_delim("data/census/metadata.csv", delim = ";", col_names = FALSE) 
+census <- read_delim("data/census/census.csv", delim = ",") 
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+kable(election.raw %>% filter(county == "Los Angeles County"))  %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width=FALSE)
+
+```
+4. Report the dimension of election.raw after removing rows with fips=2000. Provide a reason for excluding them. Please make sure to use the same name election.raw before and after removing those observations.
+```{r}
+dim(election.raw)
+election.raw <- election.raw[!election.raw$fips == 2000,]
+dim(election.raw)
+
+```
+
+
+5. Remove summary rows from election.raw data: i.e.,
+
+* Federal-level summary into a `election_federal`.
+
+* State-level summary into a `election_state`.
+
+* Only county-level data is to be in `election`.
+
+```{r}
+election_federal <- election.raw %>% filter(is.na(as.numeric(fips))) %>% filter(state=="US")
+
+election_state <-  election.raw %>% filter(is.na(as.numeric(fips))) %>% filter(state!="US")
+
+election <- election.raw %>% filter(is.na(as.numeric(fips))==FALSE)
+```
+
+
+
+6. How many named presidential candidates were there in the 2016 election? Draw a bar chart of all votes received by each candidate. You can split this into multiple plots or may prefer to plot the results on a log scale. Either way, the results should be clear and legible!
+
+Meiyu's codes: (I think the barplots are legible and clean by using this) :) Thank you! This is amazing!
+```{r}
+
+colors <- c("#DC2E15", "#2547F5")
+
+election_cands<-aggregate(election.raw$votes, by=list(candidate=election.raw$candidate), FUN=sum)
+election_cands<-election_cands%>%arrange(x)
+election_cands
+
+for (i in seq(1,30,5)){
+  election_cands_each=election_cands[i:(i+4),]
+  
+  print(ggplot(election_cands_each, aes(candidate, x)) + 
+  geom_bar(stat="identity")+
+  theme(axis.text.x=element_text(angle=90, hjust=1))+
+  coord_flip())
+}
+
+print(ggplot(election_cands[31:32,], aes(candidate, x)) + 
+  geom_bar(stat="identity", fill=colors)+
+  theme(axis.text.x=element_text(angle=90, hjust=1))+
+  coord_flip())
+```
+Meiyu's codes end.
+
+
+7. Create variables county_winner and state_winner by taking the candidate with the highest proportion of votes. Hint: to create county_winner, start with election, group by fips, compute total votes, and pct = votes/total. Then choose the highest row using top_n (variable state_winner is similar).
+
+```{r}
+county_winner<-election %>% group_by(fips) %>% 
+  dplyr::mutate( total = sum(votes)) %>%
+  mutate(fips, votes, total, pct = votes/total) %>%
+  top_n(n=1, wt=pct)
+head(county_winner)
+
+state_winner<-election_state %>% group_by(fips) %>% 
+  dplyr::mutate( total = sum(votes)) %>%
+  mutate(fips, votes, total, pct = votes/total) %>%
+  top_n(n=1, wt=pct)
+head(state_winner)
+```
+
+# Visualization
+Visualization is crucial for gaining insight and intuition during data mining. We will map our data onto maps.
+
+The R package ggplot2 can be used to draw maps. Consider the following code.
+```{r}
+states <- map_data("state")
+
+ggplot(data = states) + 
+  geom_polygon(aes(x = long, y = lat, fill = region, group = group), color = "white") + 
+  coord_fixed(1.3) +
+  guides(fill=FALSE)  # color legend is unnecessary and takes too long
+```
+
+The variable states contain information to draw white polygons, and fill-colors are determined by region.
+
+
+8. Draw county-level map by creating counties = map_data("county"). Color by county
+
+```{r}
+counties = map_data("county")
+ggplot(data = counties) + 
+  geom_polygon(aes(x = long, y = lat, fill = region, group = group), color = "white") + 
+  coord_fixed(1.3) +
+  guides(fill=FALSE)  # color legend is unnecessary and takes too long
+```
+
+9. Now color the map by the winning candidate for each state. First, combine states variable and state_winner we created earlier using left_join(). Note that left_join() needs to match up values of states to join the tables. A call to left_join() takes all the values from the first table and looks for matches in the second table. If it finds a match, it adds the data from the second table; if not, it adds missing values:
+
+Here, we'll be combing the two datasets based on state name. However, the state names are in different formats in the two tables: e.g. AZ vs. arizona. Before using left_join(), create a common column by creating a new column for states named fips = state.abb[match(some_column, some_function(state.name))]. Replace some_column and some_function to complete creation of this new column. Then left_join(). Your figure will look similar to state_level New York Times map.
+
+```{r}
+states$fips =  state.abb[match(states$region, tolower(state.name))]
+states <- left_join(states, state_winner, "fips")
+states
+
+
+ggplot(data = states) + 
+  geom_polygon(aes(x = long, y = lat, fill = candidate, group = group), color = "white") + 
+  coord_fixed(1.3) +
+  guides()  # color legend is unnecessary and takes too long
+```
+
+10. The variable county does not have fips column. So we will create one by pooling information from maps::county.fips. Split the polyname column to region and subregion. Use left_join() combine county.fips into county. Also, left_join() previously created variable county_winner. Your figure will look similar to county-level New York Times map.
+
+```{r}
+counties = map_data("county")
+cfips <- maps::county.fips
+
+a <- data.frame(matrix(unlist(strsplit(cfips$polyname, ',')), ncol=2, byrow=TRUE))
+colnames(a) <- c("region", "subregion")
+a$fips <- as.character(cfips$fips)
+counties_joined <- left_join(counties, a, by=c("region", "subregion"))
+
+counties_joined <- left_join(counties_joined, county_winner, "fips")
+
+ggplot(data = counties_joined) + 
+  geom_polygon(aes(x = long, y = lat, fill = candidate, group = group), color = "white") + 
+  coord_fixed(1.3) +
+  guides()  # color legend is unnecessary and takes too long
+```
+
+11. Create a visualization of your choice using census data. Many exit polls noted that demographics played a big role in the election. Use this Washington Post article and this R graph gallery for ideas and inspiration.
+
+```{r}
+census_temp <- census
+census_temp$region <- tolower(census_temp$State)
+census_temp$subregion <- tolower(census_temp$County)
+counties_joined <- left_join(counties_joined, census_temp, c("region", "subregion"))
+
+ggplot(data = counties_joined) + 
+  geom_polygon(aes(x = long, y = lat, fill = White, group = group)) + 
+  scale_fill_gradientn(
+    colours = c(colors[2], "white", colors[1]),
+    values = dplyr::rescale(c(0, median(counties_joined$White, na.rm=T), 100.00)) # 69.8 is a median value
+  ) +
+  coord_fixed(1.3) +
+  guides()  # color legend is unnecessary and takes too long
+
+```
+
+12. The census data contains high resolution information (more fine-grained than county-level). In this problem, we aggregate the information into county-level data by computing TotalPop-weighted average of each attributes for each county. Create the following variables:
+
+- Clean census data census.del: start with census, filter out any rows with missing values, convert {Men, Employed, Citizen} attributes to percentages (meta data seems to be inaccurate), compute Minority attribute by combining {Hispanic, Black, Native, Asian, Pacific}, remove these variables after creating Minority, remove {Walk, PublicWork, Construction}.
+Many columns seem to be related, and, if a set that adds up to 100%, one column will be deleted.
+
+```{r}
+census.del <- na.omit(census)
+
+unique(census.del$Men + census.del$Women == census.del$TotalPop) # Women could be erased
+
+for (column in c("Men", "Employed", "Citizen")){
+  census.del[,column] <- census.del[,column]/census.del[,3]
+}
+
+census.del$Minority <-rowSums(census.del[,c("Hispanic", "Black", "Native", "Asian", "Pacific")])
+
+census.del <- subset(census.del, select=-c(Hispanic, Black, Native, Asian, Pacific, Walk, PublicWork, Construction, Women))
+
+census.del
+```
+
+- Sub-county census data, census.subct: start with census.del from above, group_by() two attributes {State, County}, use add_tally() to compute CountyTotal. Also, compute the weight by TotalPop/CountyTotal.
+
+```{r}
+census.subct <- census.del %>% group_by(State, County) %>% add_tally(TotalPop, name = "CountyTotal")
+
+census.subct$weight <- census.subct$TotalPop/census.subct$CountyTotal
+```
+
+- County census data, census.ct: start with census.subct, use summarize_at() to compute weighted sum
+
+```{r}
+census.ct <- census.subct %>% summarize_at(vars(Men:CountyTotal), funs(weighted.mean(., weight)))
+```
+
+- Print few rows of census.ct:
+
+```{r}
+head(census.ct)
+```
+
+```{r}
+census.subct
+```
+
+# Dimensionality
+
+13. Run PCA for both county & sub-county level data. Save the first two principle components PC1 and PC2 into a two-column data frame, call it ct.pc and subct.pc, respectively. Discuss whether you chose to center and scale the features before running PCA and the reasons for your choice. What are the three features with the largest absolute values of the first principal component? Which features have opposite signs and what does that mean about the correlation between these features?
+
+> Scale true and center true sothat standardize whole variables with different range of values.
+
+
+```{r}
+cnums <- unlist(lapply(census.ct, is.numeric))  
+census.ct.nums <- census.ct[,cnums]
+cnums
+
+snums <- unlist(lapply(census.subct, is.numeric))
+snums[30] <- FALSE
+census.subct.nums <- census.subct[,snums]
+snums # weight column needs to be removed?
+
+county.pr <- prcomp(census.ct.nums, scale=TRUE, center = TRUE)
+ct.pc <- county.pr$rotation[,1:2]
+
+subct.pr <- prcomp(census.subct.nums, scale=TRUE, center = TRUE)
+subct.pc <- subct.pr$rotation[,1:2]
+
+ct.pc
+subct.pc
+```
+
+14. Determine the number of minimum number of PCs needed to capture 90% of the variance for both the county and sub-county analyses. Plot proportion of variance explained (PVE) and cumulative PVE for both county and sub-county analyses.
+
+```{r}
+pr.var=subct.pr$sdev ^2
+pve=pr.var/sum(pr.var)
+
+plot(pve, xlab="Principal Component",
+ylab="Proportion of Variance Explained ", ylim=c(0,1),type='b')
+plot(cumsum(pve), xlab="Principal Component ",
+ylab=" Cumulative Proportion of Variance Explained ", ylim=c(0,1), type='b')
+
+
+min(which(cumsum(pve) > 0.9)) # 16
+
+```
+
+
+```{r}
+pr.var=county.pr$sdev ^2
+pve=pr.var/sum(pr.var)
+
+plot(pve, xlab="Principal Component",
+ylab="Proportion of Variance Explained ", ylim=c(0,1),type='b')
+plot(cumsum(pve), xlab="Principal Component ",
+ylab=" Cumulative Proportion of Variance Explained ", ylim=c(0,1), type='b')
+
+
+min(which(cumsum(pve) > 0.9)) # 14
+
+```
+
+#Clustering
+15. With census.ct, perform hierarchical clustering with complete linkage. Cut the tree to partition the observations into 10 clusters. Re-run the hierarchical clustering algorithm using the first 5 principal components of ct.pc as inputs instead of the originald features. Compare and contrast the results. For both approaches investigate the cluster that contains San Mateo County. Which approach seemed to put San Mateo County in a more appropriate clusters? Comment on what you observe and discuss possible explanations for these observations.
+
+```{r}
+hc1data <- as.data.frame(scale(census.ct[, cnums]))
+length(cnums)
+cdata <- matrix(unlist(hc1data), ncol=26)
+dim(cdata)
+dis = dist(hc1data, method="euclidean")
+census.hc = hclust(dis, method="complete")
+hc.cut = cutree(census.hc, k=10)
+hc1data$hcresult <- as.factor(hc.cut)
+hc1data$region <- tolower(census.ct$State)
+hc1data$subregion <- tolower(census.ct$County)
+ct.pc.5 <- data.frame(county.pr$rotation[,1:5])
+pc5 <- matrix(unlist(ct.pc.5), nrow=26)
+hc2data <- cdata %*% pc5
+colnames(hc2data)<-c("pc1", "pc2", "pc3", "pc4", "pc5")
+hc2data <- data.frame(hc2data)
+dis.pc = dist(hc2data, method="euclidean")
+pc5.hc = hclust(dis.pc, method="complete")
+hc.cut.pc = cutree(pc5.hc, k=10)
+hc2data$hcresult <- as.factor(hc.cut.pc)
+hc2data$region <- tolower(census.ct$State)
+hc2data$subregion <- tolower(census.ct$County)
+```
+
+
+
+```{r}
+counties_tomap <- left_join(counties, a, by=c("region", "subregion"))
+counties_tomap <- left_join(counties_tomap, hc1data,  by=c("region", "subregion"))
+head(counties_tomap)
+counties_tomap %>% filter(subregion == "san mateo") %>% dplyr::select(hcresult) %>% unique()
+# San Mateo in 2
+ggplot(data = counties_tomap) + 
+  geom_polygon(aes(x = long, y = lat, fill = hcresult, group = group), color = "white") + 
+  coord_fixed(1.10) +
+  guides()  # color legend is unnecessary and takes too long
+```
+
+```{r}
+counties_tomap2 <- left_join(counties, a, by=c("region", "subregion"))
+counties_tomap2 <- left_join(counties_tomap2, hc2data,  by=c("region", "subregion"))
+head(counties_tomap2)
+counties_tomap2 %>% filter(subregion == "san mateo") %>% dplyr::select(hcresult) %>% unique()
+# San Mateo in 7
+ggplot(data = counties_tomap2) + 
+  geom_polygon(aes(x = long, y = lat, fill = hcresult, group = group), color = "white") + 
+  coord_fixed(1.10) +
+  guides()  # color legend is unnecessary and takes too long
+```
+
+
+```{r}
+plot(census.hc, hang=-1, labels=, main='Cluster Dendrogram', cex=0.25) ; rect.hclust(census.hc, k=10, border = 2:4)
+dend1 = as.dendrogram(census.hc)
+# color branches and labels by 10 clusters
+dend1 = color_branches(dend1, k=10)
+dend1 = color_labels(dend1, k=10)
+# change label size
+dend1 = set(dend1, "labels_cex", 0.3)
+dend1 = set_labels(dend1, labels=hc1data$subregion[order.dendrogram(dend1)])
+# plot the dendrogram
+plot(dend1, horiz=T, main = "Dendrogram colored by three clusters")
+```
+```{r}
+
+
+```
+
+
+#Classfication
+In order to train classification models, we need to combine county_winner and census.ct data. This seemingly straightforward task is harder than it sounds. Following code makes necessary changes to merge them into election.cl for classification.
+
+```{r}
+tmpwinner <- county_winner %>% ungroup %>%
+  mutate(state = state.name[match(state, state.abb)]) %>%               ## state abbreviations
+  mutate_at(vars(state, county), tolower) %>%                           ## to all lowercase
+  mutate(county = gsub(" county| columbia| city| parish", "", county))  ## remove suffixes
+tmpcensus <- census.ct %>% mutate_at(vars(State, County), tolower)
+
+election.cl <- tmpwinner %>%
+  left_join(tmpcensus, by = c("state"="State", "county"="County")) %>% 
+  na.omit
+
+## save meta information
+election.meta <- election.cl %>% dplyr::select(c(county, fips, state, votes, pct, total))
+
+## save predictors and class labels
+election.cl = election.cl %>% dplyr::select(-c(county, fips, state, votes, pct, total))
+```
+
+Using the following code, partition data into 80% training and 20% testing:
+```{r}
+set.seed(10) 
+n <- nrow(election.cl)
+in.trn <- sample.int(n, 0.8*n) 
+trn.cl <- election.cl[ in.trn,]
+tst.cl <- election.cl[-in.trn,]
+```
+
+Using the following code, define 10 cross-validation folds:
+```{r}
+set.seed(20) 
+nfold <- 10
+folds <- sample(cut(1:nrow(trn.cl), breaks=nfold, labels=FALSE))
+```
+
+Using the following error rate function:
+```{r}
+calc_error_rate = function(predicted.value, true.value){
+  return(mean(true.value!=predicted.value))
+}
+records = matrix(NA, nrow=3, ncol=2)
+colnames(records) = c("train.error","test.error")
+rownames(records) = c("tree","logistic","lasso")
+```
+
+16. Decision tree: train a decision tree by cv.tree(). Prune tree to minimize misclassification error. Be sure to use the folds from above for cross-validation. Visualize the trees before and after pruning. Save training and test errors to records variable. Intepret and discuss the results of the decision tree analysis. Use this plot to tell a story about voting behavior in the US (remember the NYT infographic?)
+```{r}
+tree_tr = tree(candidate~., data=trn.cl)
+#tree_cv = cv.tree(tree_tr, rand=folds, FUN=prune.tree, method='misclass')
+tree_cv = cv.tree(tree_tr, rand=folds, FUN=prune.misclass, K=nfold)
+tree_best = (as_tibble(tree_cv[1:3]) %>% arrange(dev, size) %>% head(1))$size 
+#tree_prune = prune.tree(tree_tr, best=tree_best)
+best_size = tree_cv$size[max(which(tree_cv$dev==min(tree_cv$dev)))]
+tree_prune = prune.tree(tree_tr, best=best_size, method='misclass')
+summary(tree_tr)
+```
+
+```{r}
+par(mfrow=c(2,1), mar=c(0,0,0,0))
+draw.tree(tree_tr, cex=0.3, size=2, digits=2, nodeinfo=TRUE)
+draw.tree(tree_prune, cex=0.3, size=2, digits=2, nodeinfo=TRUE)
+```
+
+
+```{r}
+tree_trn_er = predict(tree_prune, trn.cl, type="class") %>%
+  calc_error_rate(trn.cl$candidate)
+tree_tst_er = predict(tree_prune, tst.cl, type="class") %>%
+  calc_error_rate(tst.cl$candidate)
+
+records["tree",]=cbind(tree_trn_er, tree_tst_er)
+records
+```
+
+17. Run a logistic regression to predict the winning candidate in each county. Save training and test errors to records variable. What are the significant variables? Are they consistent with what you saw in decision tree analysis? Interpret the meaning of a couple of the significant coefficients in terms of a unit change in the variables.
+
+```{r}
+logit_reg <- glm(candidate~., data=trn.cl, family=binomial)
+summary(logit_reg)
+```
+
+```{r}
+set.seed(1)
+logit_trn <- predict(logit_reg, trn.cl %>% dplyr::select(-candidate), type="response")
+logit_tst <- predict(logit_reg, tst.cl %>% dplyr::select(-candidate), type="response")
+
+logit_trn_er = ifelse(logit_trn>=0.5, "Hillary Clinton", "Donald Trump") %>% 
+  as.factor %>% calc_error_rate(droplevels(trn.cl$candidate))
+logit_tst_er = ifelse(logit_tst>=0.5, "Hillary Clinton", "Donald Trump") %>% 
+  as.factor %>% calc_error_rate(droplevels(tst.cl$candidate))
+
+records["logistic",]=cbind(logit_trn_er, logit_tst_er)
+records
+
+
+#shuying code
+#rownames(coef(cv.lasso, s = 'lambda.1se'))[coef(cv.lasso, s = 'lambda.1se')[,1]!= 0] 
+### returns nonzero coefs
+```
+
+
+18. You may notice that you get a warning glm.fit: fitted probabilities numerically 0 or 1 occurred. As we discussed in class, this is an indication that we have perfect separation (some linear combination of variables perfectly predicts the winner). This is usually a sign that we are overfitting. One way to control overfitting in logistic regression is through regularization. Use the cv.glmnet function from the glmnet library to run K-fold cross validation and select the best regularization parameter for the logistic regression with LASSO penalty. Reminder: set alpha=1 to run LASSO regression, set lambda = c(1, 5, 10, 50) * 1e-4 in cv.glmnet() function to set pre-defined candidate values for the tuning parameter λ. This is because the default candidate values of λ in cv.glmnet() is relatively too large for our dataset thus we use pre-defined candidate values. What is the optimal value of λ in cross validation? What are the non-zero coefficients in the LASSO regression for the optimal value of λ? How do they compare to the unpenalized logistic regression? Save training and test errors to the records variable.
+
+```{r}
+set.seed(666)
+lambdas = c(1, 5, 10, 50) * 1e-4
+
+x_train = as.matrix(trn.cl %>% dplyr::select(-candidate))
+y_train = droplevels(trn.cl$candidate)
+
+logit_lasso <- cv.glmnet(x_train, y_train, family="binomial", alpha = 1, lambda = lambdas, nfolds = nfold)
+
+position=min(which(logit_lasso$cvm==min(logit_lasso$cvm)))
+
+lambda_best = logit_lasso$lambda[position]
+lambda_best
+
+coeff_train = predict(logit_lasso, type="coefficients", s=lambda_best, newx = trn.cl)
+coeff_train
+```
+
+```{r}
+set.seed(1)
+#calculate training and test error
+pred_train=predict(logit_lasso, s=lambda_best, newx=x_train, type="class") 
+lasso_trn_er=calc_error_rate(pred_train, y_train)
+
+
+x_test = as.matrix(tst.cl %>% dplyr::select(-candidate))
+y_test = droplevels(tst.cl$candidate)
+
+pred_test=predict(logit_lasso, s=lambda_best, newx=x_test, type="class") 
+lasso_tst_er=calc_error_rate(pred_test, y_test)
+
+
+records["lasso",]=cbind(lasso_trn_er, lasso_tst_er)
+records
+```
+
+19. Compute ROC curves for the decision tree, logistic regression and LASSO logistic regression using predictions on the test data. Display them on the same plot. Based on your classification results, discuss the pros and cons of the various methods. Are the different classifiers more appropriate for answering different kinds of questions about the election?
+
+```{r}
+pred_tree <- predict(tree_prune, tst.cl %>% dplyr::select(-candidate))[,"Hillary Clinton"]
+
+tree_roc <-performance(prediction(pred_tree, factor(tst.cl$candidate)), 
+                       measure="tpr",
+                       x.measure="fpr")
+
+pred_logit_reg <- predict(logit_reg, tst.cl %>% dplyr::select(-candidate))
+
+logit_reg_roc <-performance(prediction(pred_logit_reg, factor(tst.cl$candidate)), 
+                       measure="tpr",
+                       x.measure="fpr")
+
+pred_logit_lasso <- predict(logit_lasso, tst.cl %>% dplyr::select(-candidate) %>% 
+                              as.matrix, s=lambda_best)
+
+logit_lasso_roc <-performance(prediction(pred_logit_lasso, factor(tst.cl$candidate)), 
+                       measure="tpr",
+                       x.measure="fpr")
+```
+
+```{r}
+
+plot(tree_roc, col="purple", lwd=2)
+plot(logit_reg_roc, col="green", lwd=2, add=T)
+plot(logit_lasso_roc, col="red", lwd=2, add=T)
+
+abline(0,1,lwd=2, col="black")
+
+legend("bottomright", 
+       legend = c("decision tree", "logistic regression", "LASSO logistic regression"), 
+       col=c("purple", "green", "red"),
+       lwd=c(2,2,2))
+```
+
+
+
+```{r}
+tree_auc=performance(prediction(pred_tree, factor(tst.cl$candidate)),"auc")@y.values
+tree_auc
+logit_reg_auc=performance(prediction(pred_logit_reg, factor(tst.cl$candidate)),"auc")@y.values
+logit_reg_auc
+logit_lasso_auc=performance(prediction(pred_logit_lasso,factor(tst.cl$candidate)),"auc")@y.values
+logit_lasso_auc
+```
+
+20. Taking it Further
+Exploring additional classification methods: KNN, LDA, QDA, SVM, random forest, boosting etc. (You may research and use methods beyond those covered in this course). How do these compare to logistic regression and the tree method?
+```{r}
+# creating a test error table
+records_tst_error = matrix(NA, nrow=6, ncol=1)
+colnames(records_tst_error) = c("test error")
+rownames(records_tst_error) = c("tree","logistic","lasso", "boost", "random forest", "svm")
+records_tst_error[1,1]=tree_tst_er
+records_tst_error[2,1]=logit_tst_er
+records_tst_error[3,1]=lasso_tst_er
+records_tst_error
+```
+
+
+Boosting method
+```{r}
+set.seed(1)
+boost=gbm(ifelse(candidate=="Donald Trump",0,1)~., data=trn.cl, distribution="bernoulli",n.trees=500,interaction.depth=4)
+summary(boost) 
+```
+
+
+```{r}
+yhat_boost = predict(boost, newdata=tst.cl, n.trees=500)
+
+boost_err=table(pred=as.factor(ifelse(yhat_boost>-6.3,"Yes","No")),
+                truth=droplevels(tst.cl$candidate))
+
+boost_tst_err=1-sum(diag(boost_err))/sum(boost_err)
+boost_tst_err
+records_tst_error[4,1]=boost_tst_err
+records_tst_error
+```
+
+random forest method
+```{r}
+trn.cl.rf<-trn.cl %>% droplevels(trn.cl$candidate)
+rf = randomForest(candidate~., data=trn.cl.rf, mtry=2, ntree=500, importance=TRUE) 
+rf
+
+yhat_rf=predict(rf,newdata=tst.cl) 
+rf_err=table(pred=yhat_rf, truth=droplevels(tst.cl$candidate)) 
+rf_tst_err=1-sum(diag(rf_err))/sum(rf_err)
+
+records_tst_error[5,1]=rf_tst_err
+records_tst_error
+```
+```{r}
+importance(rf)
+varImpPlot(rf)
+```
+
+
+svm method
+```{r}
+set.seed(1)
+svm_fit_linear = svm(candidate~.,kernel="linear",gamma=0.5, cost=1, data = trn.cl)
+```
+
+```{r}
+svm_pred_linear <- predict(svm_fit_linear, newdata=tst.cl) 
+svm_pred_linear <- svm_pred_linear[, drop=T]
+(svm_err_linear=table(pred=svm_pred_linear, truth=droplevels(tst.cl$candidate)))
+svm_tst_err_linear=1-sum(diag(svm_err_linear))/sum(svm_err_linear) 
+svm_tst_err_linear
+```
+
+
+```{r}
+records_tst_error[6,1]=summary(svm_tune)$best.performance
+records_tst_error
+```
+
