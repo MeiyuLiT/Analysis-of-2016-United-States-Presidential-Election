@@ -28,7 +28,7 @@ It indicates even though the winner of the election was Donald Trump, Hillary Cl
 
 <img width="417" alt="Screenshot 2023-05-26 at 15 01 05" src="https://github.com/MeiyuLiT/Analysis-of-2016-United-States-Presidential-Election/assets/75913591/5bab568d-9660-4d3c-861f-0bc936835fec">
 
-<img width="417" alt="Screenshot 2023-05-26 at 15 03 31" src="https://github.com/MeiyuLiT/Analysis-of-2016-United-States-Presidential-Election/assets/75913591/8cbf5113-4987-4d48-b2f7-4fce39e55505">
+<img width="417" alt="Screenshot 2023-05-26 at 15 18 22" src="https://github.com/MeiyuLiT/Analysis-of-2016-United-States-Presidential-Election/assets/75913591/a8cb8d2a-b8a3-42ce-8a54-55e014850e15">
 
 ### Principal Component Analysis
 The Principal Component Analysis(PC) was conducted on both county and sub-county level data. Regarding that the variables included in each data have different ranges of value, scaling and centering option was enabled in the PCA. Please see detailed analysis in the report.
