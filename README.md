@@ -26,9 +26,8 @@ census
 ### Exploratory Data Analysis
 It indicates even though the winner of the election was Donald Trump, Hillary Clinton got more votes in total. From the county-level map, Donald Trump won in 2607 counties, and Hillary Clinton won in 462 counties. So even though Hillary got more votes in total, Trump won in more electoral districts. 
 
-<img width="417" alt="Screenshot 2023-05-26 at 15 01 05" src="https://github.com/MeiyuLiT/Analysis-of-2016-United-States-Presidential-Election/assets/75913591/5bab568d-9660-4d3c-861f-0bc936835fec">
-
-<img width="417" alt="Screenshot 2023-05-26 at 15 18 22" src="https://github.com/MeiyuLiT/Analysis-of-2016-United-States-Presidential-Election/assets/75913591/a8cb8d2a-b8a3-42ce-8a54-55e014850e15">
+<img width="500" alt="Screenshot 2023-05-26 at 15 18 22" src="https://github.com/MeiyuLiT/Analysis-of-2016-United-States-Presidential-Election/assets/75913591/a8cb8d2a-b8a3-42ce-8a54-55e014850e15">
+<img width="417" alt="Screenshot 2023-05-26 at 15 19 06" src="https://github.com/MeiyuLiT/Analysis-of-2016-United-States-Presidential-Election/assets/75913591/ab319442-9461-40c5-8d3c-b0dc66316860">
 
 ### Principal Component Analysis
 The Principal Component Analysis(PC) was conducted on both county and sub-county level data. Regarding that the variables included in each data have different ranges of value, scaling and centering option was enabled in the PCA. Please see detailed analysis in the report.
